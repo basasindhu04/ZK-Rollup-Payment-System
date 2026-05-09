@@ -1,0 +1,93 @@
+services:
+
+  hardhat:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: sh -c "npm install && npx hardhat node --hostname 0.0.0.0"
+    ports:
+      - "8545:8545"
+    networks:
+      - zkrollup
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: zkrollup
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - zkrollup
+
+  deployer:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - deployments_data:/app/deployments
+    environment:
+      - HARDHAT_NETWORK=localhost
+    command: sh -c "npm install && sleep 30 && npx hardhat run scripts/deploy.js --network localhost"
+    depends_on:
+      - hardhat
+      - postgres
+    networks:
+      - zkrollup
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/zkrollup
+      - API_PORT=4000
+      - RPC_URL=http://hardhat:8545
+      - RELAYER_PRIVATE_KEY=${RELAYER_PRIVATE_KEY}
+      - USER_A_PRIVATE_KEY=${USER_A_PRIVATE_KEY}
+      - USER_A_ADDRESS=${USER_A_ADDRESS}
+      - USER_B_ADDRESS=${USER_B_ADDRESS}
+    volumes:
+      - ./deployments:/app/deployments:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - zkrollup
+    restart: on-failure
+
+  flutter:
+    build:
+      context: ./flutter_app
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+    networks:
+      - zkrollup
+
+volumes:
+  postgres_data:
+  deployments_data:
+
+networks:
+  zkrollup:
+    driver: bridge
