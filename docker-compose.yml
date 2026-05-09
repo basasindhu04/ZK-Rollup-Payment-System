@@ -34,9 +34,9 @@ services:
     working_dir: /app
     volumes:
       - .:/app
-      - deployments_data:/app/deployments
     environment:
       - HARDHAT_NETWORK=localhost
+      - RPC_URL=http://hardhat:8545
     command: sh -c "npm install && sleep 30 && npx hardhat run scripts/deploy.js --network localhost"
     depends_on:
       - hardhat
@@ -86,7 +86,6 @@ services:
 
 volumes:
   postgres_data:
-  deployments_data:
 
 networks:
   zkrollup:
